@@ -99,7 +99,18 @@ __weak void SystemCoreClockUpdate(void)
  */
 __weak int PreInit(void)
 {
-    // Do nothing
+    /* Divide down the system clock before the SIMO is ready */
+    MXC_GCR->clkcn &= ~(MXC_S_GCR_CLKCN_PSC_DIV128);
+    MXC_GCR->clkcn |= (MXC_S_GCR_CLKCN_PSC_DIV128);
+
+    /* Wait for SIMO ready */
+    while(!(MXC_SIMO->buck_out_ready & (MXC_F_SIMO_BUCK_OUT_READY_BUCKOUTRDYA))) {}
+    while(!(MXC_SIMO->buck_out_ready & (MXC_F_SIMO_BUCK_OUT_READY_BUCKOUTRDYB))) {}
+    while(!(MXC_SIMO->buck_out_ready & (MXC_F_SIMO_BUCK_OUT_READY_BUCKOUTRDYC))) {}
+
+    /* Restore the default system clock */
+    MXC_GCR->clkcn &= ~(MXC_S_GCR_CLKCN_PSC_DIV128);
+
     return 0;
 }
 

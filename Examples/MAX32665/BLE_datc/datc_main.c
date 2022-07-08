@@ -458,11 +458,10 @@ static void datcPrintScanReport(dmEvt_t *pMsg)
 
     if ((pData = DmFindAdType(DM_ADV_TYPE_LOCAL_NAME, pMsg->scanReport.len,
                               pMsg->scanReport.pData)) != NULL) {
-
-        datcPrintName(pMsg->scanReport.pData);
+        datcPrintName(pData);
     } else if ((pData = DmFindAdType(DM_ADV_TYPE_SHORT_NAME, pMsg->scanReport.len,
                                      pMsg->scanReport.pData)) != NULL) {
-        datcPrintName(pMsg->scanReport.pData);
+        datcPrintName(pData);
     }
 #endif
 }
@@ -502,10 +501,11 @@ static void datcScanReport(dmEvt_t *pMsg)
         /* resolve advertiser's RPA to see if we already have a bond with this device */
         AppMasterResolveAddr(pMsg, APP_DB_HDL_NONE, APP_RESOLVE_ADV_RPA);
     }
-    /* find vendor-specific advertising data */
-    else if ((pData = DmFindAdType(DM_ADV_TYPE_LOCAL_NAME, pMsg->scanReport.len,
-                                   pMsg->scanReport.pData)) != NULL) {
-        /* check length and vendor ID */
+
+    /* find device name */
+    if (!connect && ((pData = DmFindAdType(DM_ADV_TYPE_LOCAL_NAME, pMsg->scanReport.len,
+                                   pMsg->scanReport.pData)) != NULL)) {
+        /* check length and device name */
         if (pData[DM_AD_LEN_IDX] >= 4 && (pData[DM_AD_DATA_IDX] == 'D') &&
                 (pData[DM_AD_DATA_IDX+1] == 'A') &&
                 (pData[DM_AD_DATA_IDX+2] == 'T') &&

@@ -151,22 +151,10 @@ static palCryptoEcbData_t palCryptoEcb;
 static void palCryptoAesEcb(const uint8_t* key, const uint8_t* pt, uint8_t* ct)
 {
 
-  uint8_t ptTemp[PAL_CRYPTO_AES_BLOCK_SIZE];
-  uint8_t ctTemp[PAL_CRYPTO_AES_BLOCK_SIZE];
-  int i;
-
-  for(i = 0; i < PAL_CRYPTO_AES_BLOCK_SIZE; i++) {
-    ptTemp[i] = pt[PAL_CRYPTO_AES_BLOCK_SIZE-i-1];
-  }
-
   MXC_TPU_Cipher_Config(MXC_TPU_MODE_ECB, MXC_TPU_CIPHER_AES128);
 
-  MXC_TPU_Cipher_AES_Encrypt((const char*)ptTemp, NULL, (const char*)key, MXC_TPU_CIPHER_AES128, 
-    MXC_TPU_MODE_ECB, AES_DATA_LEN, (char*)ctTemp);
-
-  for(i = 0; i < PAL_CRYPTO_AES_BLOCK_SIZE; i++) {
-    ct[i] = ctTemp[PAL_CRYPTO_AES_BLOCK_SIZE-i-1];
-  }
+  MXC_TPU_Cipher_AES_Encrypt((const char*)pt, NULL, (const char*)key, MXC_TPU_CIPHER_AES128, 
+    MXC_TPU_MODE_ECB, AES_DATA_LEN, (char*)ct);
 }
 
 /*************************************************************************************************/

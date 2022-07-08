@@ -48,6 +48,11 @@
 
 #define FREQ_HOP_PERIOD_US                      20000
 
+/* Bluetooth DBB registers */
+#define MXC_R_CONST_OUPUT       *((volatile uint16_t*)(0x40052040))
+#define MXC_R_PATTERN_GEN       *((volatile uint16_t*)(0x4005203C))
+#define MXC_R_TX_CTRL           *((volatile uint16_t*)(0x4005101C))
+
 /**************************************************************************************************
   Global Variables
 **************************************************************************************************/
@@ -69,9 +74,12 @@ static uint8_t txFreqHopCh;
 /*! \brief Physical layer functions. */
 extern void llc_api_set_txpower(int8_t power);
 extern void dbb_seq_select_rf_channel(uint32_t rf_channel);
+extern uint8_t dbb_seq_get_rfpower(int8_t rf_power);
 extern void llc_api_tx_ldo_setup(void);
-extern void dbb_seq_tx_enable(void);
-extern void dbb_seq_tx_disable(void);
+extern void llc_api_set_phy(uint8_t phy, uint8_t phy_options);
+
+extern volatile int8_t tx_rfpower_idx;
+extern volatile int8_t tx_rfpower_on;
 
 /*************************************************************************************************/
 /*!
@@ -84,7 +92,7 @@ extern void dbb_seq_tx_disable(void);
  *  \return Pointer to string describing the PHY.
  */
 /*************************************************************************************************/
-static uint8_t* getPhyStr(uint8_t phy)
+static uint8_t* getPhyStr(void)
 {
     switch(phy) {
         case LL_TEST_PHY_LE_1M:
@@ -153,9 +161,8 @@ void printUsage(void)
     APP_TRACE_INFO0(" (2) Transmit on RF channel 39 (2480 MHz)");
     APP_TRACE_INFO0(" (3) Receive  on RF channel 39 (2480 MHz)");
     APP_TRACE_INFO0(" (4) Set Transmit power");
-    APP_TRACE_INFO0(" (5) Enable constant TX");
+    APP_TRACE_INFO0(" (5) Enable constant PRBS9 TX");
     APP_TRACE_INFO0(" (6) Disable constant TX -- MUST be called after (5)");
-    /* APP_TRACE_INFO0(" (7) Set PA value"); */
     APP_TRACE_INFO0(" (8) Set PHY");
     APP_TRACE_INFO0(" (9) TX Frequency Hop");
     APP_TRACE_INFO0(" (e) End transmission -- MUST be used after each (0-3, 9)");
@@ -190,31 +197,31 @@ static void processConsoleRX(uint8_t rxByte)
     switch (cmd) {
         case '0':
 
-            APP_TRACE_INFO1("Transmit RF channel 0, 255 bytes/pkt, 0xAA, %s, forever ..", getPhyStr(phy));
-            res = LlEnhancedTxTest(0, 255, LL_TEST_PKT_TYPE_AA, phy, 0);
+            APP_TRACE_INFO1("Transmit RF channel 0 (2402M), 255 bytes/pkt, 0xPRBS9, %s, forever ..", getPhyStr());
+            res = LlEnhancedTxTest(0, 255, LL_TEST_PKT_TYPE_PRBS9, phy, 0);
             APP_TRACE_INFO2("res = %u %s", res, res == LL_SUCCESS ? "(SUCCESS)" : "(FAIL)");
             cmd = 0;
             break;
 
         case '1':
 
-            APP_TRACE_INFO1("Transmit RF channel 19, 255 bytes/pkt, 0xAA, %s, forever ..", getPhyStr(phy));
-            res = LlEnhancedTxTest(19, 255, LL_TEST_PKT_TYPE_AA, phy, 0);
+            APP_TRACE_INFO1("Transmit RF channel 19 (2440M), 255 bytes/pkt, 0xPRBS9, %s, forever ..", getPhyStr());
+            res = LlEnhancedTxTest(19, 255, LL_TEST_PKT_TYPE_PRBS9, phy, 0);
             APP_TRACE_INFO2("res = %u %s", res, res == LL_SUCCESS ? "(SUCCESS)" : "(FAIL)");
             cmd = 0;
             break;
 
         case '2':
 
-            APP_TRACE_INFO1("Transmit RF channel 39, 255 bytes/pkt, 0xAA, %s, forever ..", getPhyStr(phy));
-            res = LlEnhancedTxTest(39, 255, LL_TEST_PKT_TYPE_AA, phy, 0);
+            APP_TRACE_INFO1("Transmit RF channel 39 (2480M), 255 bytes/pkt, 0xPRBS9, %s, forever ..", getPhyStr());
+            res = LlEnhancedTxTest(39, 255, LL_TEST_PKT_TYPE_PRBS9, phy, 0);
             APP_TRACE_INFO2("res = %u %s", res, res == LL_SUCCESS ? "(SUCCESS)" : "(FAIL)");
             cmd = 0;
             break;
 
         case '3':
 
-            APP_TRACE_INFO1("Receive RF channel 39, %s, forever ..", getPhyStr(phy));
+            APP_TRACE_INFO1("Receive RF channel 39 (2480M), %s, forever ..", getPhyStr());
             res = LlEnhancedRxTest(39, phy, 0, 0);
             APP_TRACE_INFO2("res = %u %s", res, res == LL_SUCCESS ? "(SUCCESS)" : "(FAIL)");
             cmd = 0;
@@ -224,27 +231,51 @@ static void processConsoleRX(uint8_t rxByte)
 
             if(param == 0) {
                 APP_TRACE_INFO0("Select transmit power");
-                APP_TRACE_INFO0(" 0: -10 dBm");
-                APP_TRACE_INFO0(" 1:   0 dBm");
-                APP_TRACE_INFO0(" 2: 4.5 dBm");
+                APP_TRACE_INFO0(" 0: -15 dBm");
+                APP_TRACE_INFO0(" 1: -10 dBm");
+                APP_TRACE_INFO0(" 2:  -5 dBm");
+                APP_TRACE_INFO0(" 3:  -2 dBm");
+                APP_TRACE_INFO0(" 4:   0 dBm");
+                APP_TRACE_INFO0(" 5:   2 dBm");
+                APP_TRACE_INFO0(" 6: 4.5 dBm");
                 break;
             }
 
             switch (param) {
                 case '0':
-                    llc_api_set_txpower(-10);
-                    LlSetAdvTxPower(-10);
-                    APP_TRACE_INFO0("Power set to -10 dBm");
+                    llc_api_set_txpower(-15);
+                    LlSetAdvTxPower(-15);
+					APP_TRACE_INFO1("Power set to -15, Amp_coef = %x", dbb_seq_get_rfpower(-15));
                     break;
                 case '1':
-                    llc_api_set_txpower(0);
-                    LlSetAdvTxPower(0);
-                    APP_TRACE_INFO0("Power set to 0 dBm");
+                    llc_api_set_txpower(-10);
+                    LlSetAdvTxPower(-10);
+					APP_TRACE_INFO1("Power set to -10, Amp_coef = %x", dbb_seq_get_rfpower(-10));
                     break;
                 case '2':
+                    llc_api_set_txpower(-5);
+                    LlSetAdvTxPower(-5);
+					APP_TRACE_INFO1("Power set to -5, Amp_coef = %x", dbb_seq_get_rfpower(-5));
+                    break;
+                case '3':
+                    llc_api_set_txpower(-2);
+                    LlSetAdvTxPower(-2);
+					APP_TRACE_INFO1("Power set to -2, Amp_coef = %x", dbb_seq_get_rfpower(-2));
+                    break;
+                case '4':
+                    llc_api_set_txpower(0);
+                    LlSetAdvTxPower(0);
+					APP_TRACE_INFO1("Power set to 0, Amp_coef = %x", dbb_seq_get_rfpower(0));
+                    break;
+                case '5':
+                    llc_api_set_txpower(2);
+                    LlSetAdvTxPower(2);
+					APP_TRACE_INFO1("Power set to 2, Amp_coef = %x", dbb_seq_get_rfpower(2));
+                    break;
+                case '6':
                     llc_api_set_txpower(4);
                     LlSetAdvTxPower(4);
-                    APP_TRACE_INFO0("Power set to 4.5 dBm");
+					APP_TRACE_INFO1("Power set to 4.5, Amp_coef = %x", dbb_seq_get_rfpower(4));
                     break;
                 default:
                     APP_TRACE_INFO0("Invalid selection");
@@ -257,38 +288,52 @@ static void processConsoleRX(uint8_t rxByte)
         case '5':
             if(param == 0) {
                 APP_TRACE_INFO0("Select transmit channel");
-                APP_TRACE_INFO0(" 0: 0");
-                APP_TRACE_INFO0(" 1: 19");
-                APP_TRACE_INFO0(" 2: 39");
+                APP_TRACE_INFO0(" 0:  0 (2402M)");
+                APP_TRACE_INFO0(" 1: 19 (2440M)");
+                APP_TRACE_INFO0(" 2: 33 (2468M)");
+                APP_TRACE_INFO0(" 3: 36 (2474M)");
+                APP_TRACE_INFO0(" 4: 39 (2480M)");
                 break;
             }
 
             switch (param) {
                 case '0':
                     dbb_seq_select_rf_channel(0);
-                    APP_TRACE_INFO0("Channel set to 0");
+                    APP_TRACE_INFO0("Channel set to 0 (2402M)");
                     break;
                 case '1':
                     dbb_seq_select_rf_channel(19);
-                    APP_TRACE_INFO0("Channel set to 19");
+                    APP_TRACE_INFO0("Channel set to 19 (2440M)");
                     break;
                 case '2':
+                    dbb_seq_select_rf_channel(33);
+                    APP_TRACE_INFO0("Channel set to 33 (2468M)");
+                    break;
+                case '3':
+                    dbb_seq_select_rf_channel(36);
+                    APP_TRACE_INFO0("Channel set to 36 (2474M)");
+                    break;
+                case '4':
                     dbb_seq_select_rf_channel(39);
-                    APP_TRACE_INFO0("Channel set to 39");
+                    APP_TRACE_INFO0("Channel set to 39 (2480M)");
                     break;
                 default:
                     APP_TRACE_INFO0("Invalid selection");
                     break;
             }
 
-            APP_TRACE_INFO0("Starting TX");
+            APP_TRACE_INFO0("Starting PRBS9 TX");
 
             PalBbEnable();
 
             llc_api_tx_ldo_setup();
 
             /* Enable constant TX */
-            dbb_seq_tx_enable();
+            MXC_R_TX_CTRL = 0x1;
+
+            /* Enable pattern generator, set PRBS-9 */
+            MXC_R_CONST_OUPUT = 0x0;
+            MXC_R_PATTERN_GEN = 0x4B;
 
             cmd = 0;
             param = 0;
@@ -298,7 +343,8 @@ static void processConsoleRX(uint8_t rxByte)
             APP_TRACE_INFO0("Disabling TX");
 
             /* Disable constant TX */
-            dbb_seq_tx_disable();
+            MXC_R_TX_CTRL = 0x2;
+            MXC_R_PATTERN_GEN = 0x48;
 
             PalBbDisable();
             
@@ -337,7 +383,9 @@ static void processConsoleRX(uint8_t rxByte)
                     APP_TRACE_INFO0("Invalid selection");
                     break;
             }
-
+			
+			llc_api_set_phy(phy, BB_PHY_OPTIONS_DEFAULT);
+			
             cmd = 0;
             param = 0;
             break;

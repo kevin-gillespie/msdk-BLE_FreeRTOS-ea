@@ -32,6 +32,14 @@
 #include "util/bstream.h"
 #include <string.h>
 
+
+/**************************************************************************************************
+  Macros
+**************************************************************************************************/
+
+/*! \brief  Maximum number of CIS streams. */
+#define MAX_CIS_COUNT     16
+
 /**************************************************************************************************
   Global Variables
 **************************************************************************************************/
@@ -149,7 +157,6 @@ bool_t lhciMstCisDecodeCmdPkt(LhciHdr_t *pHdr, uint8_t *pBuf)
 {
   uint8_t status = HCI_SUCCESS;
   uint8_t paramLen = 0;
-  const uint8_t MAX_CIS_COUNT = 16;
 
   switch (pHdr->opCode)
   {
